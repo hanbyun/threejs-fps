@@ -81,6 +81,14 @@ export function createMap(scene) {
     pipeRust: new THREE.MeshStandardMaterial({ color: new THREE.Color('#7a4a28'), roughness: 0.6, metalness: 0.4 }),
     lampGlow: new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb45e') }),
     concrete: new THREE.MeshStandardMaterial({ color: new THREE.Color('#7d7468'), roughness: 0.92, metalness: 0 }),
+    coneOrange: new THREE.MeshStandardMaterial({ color: new THREE.Color('#d8542e'), roughness: 0.7, metalness: 0 }),
+    coneWhite: new THREE.MeshStandardMaterial({ color: new THREE.Color('#e8e4da'), roughness: 0.7, metalness: 0 }),
+    leaf: new THREE.MeshStandardMaterial({ color: new THREE.Color('#4a7a3a'), roughness: 1, metalness: 0 }),
+    pot: new THREE.MeshStandardMaterial({ color: new THREE.Color('#8a4a2e'), roughness: 0.9, metalness: 0 }),
+    windowWarm: new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd27a') }),
+    windowAmber: new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff9a4d') }),
+    windowCool: new THREE.MeshBasicMaterial({ color: new THREE.Color('#7fb8ff') }),
+    flagCols: ['#e8821e', '#2e7fd6', '#f0a830', '#e83e8c', '#efe9dc'].map((c) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c), side: THREE.DoubleSide })),
   };
   tex.ground.repeat.set(8, 6);
   tex.wall.repeat.set(2, 1);
@@ -507,6 +515,299 @@ export function createMap(scene) {
   stencilPlane('DL-117 · TERMINAL 7', 5, -24, 1.7, -17.2, 0);
   stencilPlane('DL-309 · KEEP DRY', 4.5, 28.5, 1.7, -10.6, Math.PI / 2);
 
+  // ---- Extra dressing: more graffiti, posters, floor paint, ornaments ----
+  function tagPlane(text, color, style, w, x, y, z, rotY) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, w / 2),
+      new THREE.MeshBasicMaterial({ map: tex.tag(text, color, style), transparent: true, depthWrite: false }),
+    );
+    m.position.set(x, y, z);
+    m.rotation.y = rotY;
+    group.add(m);
+    return m;
+  }
+  function posterPlane(title, lines, accent, w, x, y, z, rotY) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, w * 1.5),
+      new THREE.MeshBasicMaterial({ map: tex.poster(title, lines, accent), transparent: true }),
+    );
+    m.position.set(x, y, z);
+    m.rotation.y = rotY;
+    group.add(m);
+    return m;
+  }
+  function groundMarkPlane(kind, text, color, size, x, z, y = 0.05) {
+    const mat = new THREE.MeshBasicMaterial({ map: tex.groundMark(kind, text, color), transparent: true, depthWrite: false });
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -2;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y, z);
+    m.receiveShadow = true;
+    group.add(m);
+    return m;
+  }
+  function bunting(x1, y1, z1, x2, y2, z2) {
+    const n = 12;
+    const pts = [];
+    for (let i = 0; i <= n; i += 1) {
+      const t = i / n;
+      pts.push(new THREE.Vector3(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t - Math.sin(t * Math.PI) * 0.55, z1 + (z2 - z1) * t));
+    }
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x2a2118 })));
+    const shape = new THREE.Shape();
+    shape.moveTo(-0.14, 0);
+    shape.lineTo(0.14, 0);
+    shape.lineTo(0, -0.34);
+    shape.closePath();
+    const flagGeo = new THREE.ShapeGeometry(shape);
+    for (let i = 1; i < n; i += 1) {
+      const f = new THREE.Mesh(flagGeo, mats.flagCols[i % mats.flagCols.length]);
+      f.position.copy(pts[i]);
+      f.rotation.y = Math.atan2(z2 - z1, x2 - x1);
+      group.add(f);
+    }
+  }
+  function lantern(x, y, z, color, hangY = null) {
+    if (hangY !== null) {
+      const line = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, hangY - y, 4), mats.dark);
+      line.position.set(x, (hangY + y) / 2, z);
+      group.add(line);
+    }
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(color) }));
+    body.scale.set(1, 0.85, 1);
+    body.position.set(x, y, z);
+    group.add(body);
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: tex.glow, transparent: true, depthWrite: false, opacity: 0.7 }));
+    halo.position.set(x, y, z);
+    halo.lookAt(0, y, 0);
+    group.add(halo);
+    return body;
+  }
+  function coneAt(x, z) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.05, 0.44), mats.rubber);
+    base.position.y = 0.025;
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.5, 12), mats.coneOrange);
+    body.position.y = 0.3;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.155, 0.1, 12), mats.coneWhite);
+    band.position.y = 0.32;
+    g.add(base, body, band);
+    g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+    group.add(g);
+    return g;
+  }
+  function plantAt(x, z) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    const potM = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.22, 0.5, 12), mats.pot);
+    potM.position.y = 0.25;
+    g.add(potM);
+    const leafGeo = new THREE.SphereGeometry(0.3, 10, 8);
+    for (const [ox, oy, oz, s] of [[0, 0.72, 0, 1], [0.2, 0.6, 0.1, 0.75], [-0.18, 0.62, -0.08, 0.7]]) {
+      const leaf = new THREE.Mesh(leafGeo, mats.leaf);
+      leaf.position.set(ox, oy, oz);
+      leaf.scale.setScalar(s);
+      g.add(leaf);
+    }
+    g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+    group.add(g);
+    return g;
+  }
+  function bannerPole(x, z, text, accent) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 4.6, 8), mats.pipe);
+    pole.position.set(x, 2.3, z);
+    register(pole, false);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.08), mats.pipe);
+    arm.position.set(x, 4.45, z);
+    register(arm, false);
+    const banner = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 3),
+      new THREE.MeshBasicMaterial({ map: tex.banner(text, accent), side: THREE.DoubleSide }),
+    );
+    banner.position.set(x, 2.9, z);
+    group.add(banner);
+    addColliderBox(0.25, 4.6, 0.25, x, 2.3, z);
+    return banner;
+  }
+  const fans = [];
+  function fanAt(x, y, z, rotY) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    g.rotation.y = rotY;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.75, 20), mats.dark);
+    g.add(disc);
+    const blades = new THREE.Group();
+    for (let i = 0; i < 3; i += 1) {
+      const holder = new THREE.Group();
+      holder.rotation.z = (i / 3) * Math.PI * 2;
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.03), mats.metal);
+      blade.position.y = 0.32;
+      holder.add(blade);
+      blades.add(holder);
+    }
+    g.add(blades);
+    const hub = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), mats.metal);
+    hub.position.z = 0.05;
+    g.add(hub);
+    group.add(g);
+    fans.push(blades);
+    return g;
+  }
+  function ventPlane(x, y, z, rotY) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshStandardMaterial({ map: tex.vent(), roughness: 0.8, metalness: 0.3 }));
+    m.position.set(x, y, z);
+    m.rotation.y = rotY;
+    group.add(m);
+    return m;
+  }
+  function lightPool(x, z, size, opacity) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: tex.glow, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, 0.06, z);
+    group.add(m);
+    return m;
+  }
+  function shaft(x, z, r, height, opacity) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, height, 16, 1, true), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb45e'), transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
+    cone.position.set(x, height / 2, z);
+    group.add(cone);
+    return cone;
+  }
+  function windowPane(x, y, z, rotY, mat) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.1), mat);
+    m.position.set(x, y, z);
+    m.rotation.y = rotY;
+    group.add(m);
+    return m;
+  }
+  function cable(x1, y1, z1, x2, y2, z2, sag = 0.6) {
+    const pts = [];
+    const n = 12;
+    for (let i = 0; i <= n; i += 1) {
+      const t = i / n;
+      pts.push(new THREE.Vector3(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t - Math.sin(t * Math.PI) * sag, z1 + (z2 - z1) * t));
+    }
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x1a1512 })));
+  }
+
+  // More spray tags, every style, on walls, containers and the silo.
+  tagPlane('RUST', '#ffd23e', 'bubble', 6, 8, 2.8, -21.9, 0);
+  tagPlane('VANDAL', '#4dd0e1', 'stencil', 6, -8, 2.2, -21.9, 0);
+  tagPlane('07', '#ff8a3c', 'wild', 5, 30.9, 3.0, 6, -Math.PI / 2);
+  tagPlane('KEEP OUT', '#ff5040', 'stencil', 5, -30.9, 2.5, -6, Math.PI / 2);
+  tagPlane('HAUL', '#7ee081', 'bubble', 5, 18, 1.9, -17.2, 0);
+  tagPlane('SCRAP', '#e8b4ff', 'wild', 5, -18, 1.9, -17.2, 0);
+  tagPlane('OIL', '#c9c9c9', 'stencil', 4, 27.5, 1.8, -14.2, 0);
+  tagPlane('A LONG', '#f0a830', 'stencil', 4.5, 12.31, 2.2, 0, Math.PI / 2);
+  tagPlane('B LONG', '#7fb8ff', 'stencil', 4.5, -12.31, 2.2, 0, -Math.PI / 2);
+  tagPlane('NO ENTRY', '#ff5040', 'bubble', 5, -14, 2.4, 21.9, Math.PI);
+  tagPlane('GATE 7', '#ffd23e', 'stencil', 5, 14, 2.4, 21.9, Math.PI);
+  tagPlane('DUSTLINE', '#ff5a3c', 'wild', 4, 7, 2.4, 21.9, Math.PI);
+  // The big depot mural on the north wall, neon sign above it (flickers).
+  {
+    const mural = new THREE.Mesh(new THREE.PlaneGeometry(14, 4.375), new THREE.MeshBasicMaterial({ map: tex.mural('DUSTLINE', '#ffd23e') }));
+    mural.position.set(0, 2.2, -21.85);
+    group.add(mural);
+  }
+  let neonMat = null;
+  {
+    neonMat = new THREE.MeshBasicMaterial({ map: tex.neonSign('TERMINAL 7', '#4dd0e1'), transparent: true });
+    const neon = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), neonMat);
+    neon.position.set(0, 4.8, -21.85);
+    group.add(neon);
+  }
+  // Flyers on the mid pillars and the north wall.
+  posterPlane('WANTED', ['WARDEN CREW', 'REWARD $500'], '#d64545', 1.3, 3, 1.7, 0.72, 0);
+  posterPlane('WANTED', ['VANGUARD CREW', 'REWARD $500'], '#f0a830', 1.3, -3, 1.7, 0.72, 0);
+  posterPlane('SAFETY FIRST', ['HARD HAT AREA', 'NO SMOKING'], '#2e7fd6', 1.3, -12, 1.8, -21.9, 0);
+  posterPlane('TONIGHT', ['LIVE AT THE DEPOT', 'DOORS 20:00'], '#e83e8c', 1.3, 12, 1.8, -21.9, 0);
+  posterPlane('SHIFT ROTA', ['A TEAM 06:00', 'B TEAM 18:00'], '#7ee081', 1.3, 28, 1.8, -21.9, 0);
+  // Floor paint: arrows to the sites, lane number, keep-clear zones.
+  groundMarkPlane('arrowText', 'A', '#e8821e', 3.5, 12, 4);
+  groundMarkPlane('arrowText', 'B', '#2e7fd6', 3.5, -12, 4);
+  groundMarkPlane('arrow', null, '#d8cfc0', 3, 0, 12);
+  groundMarkPlane('text', '07', '#d8cfc0', 3, 0, -4);
+  groundMarkPlane('text', 'KEEP CLEAR', '#e8821e', 3.5, 23, -5.5, 0.09);
+  groundMarkPlane('text', 'KEEP CLEAR', '#2e7fd6', 3.5, -23, -5.5, 0.09);
+  groundMarkPlane('text', 'STOP', '#ff5040', 3, 0, 17);
+  // Bunting across the site entrances and the spawn yard.
+  bunting(18, 4.0, -6, 28, 4.0, -6);
+  bunting(-28, 4.0, -6, -18, 4.0, -6);
+  bunting(-8, 4.0, 16, 8, 4.0, 16);
+  // Paper lanterns: three hanging off the mid string lights, two off the
+  // B gantry beam, one off the A silo spout.
+  lantern(-3.75, 3.55, -4, '#ff9a3c', 3.95);
+  lantern(0, 3.5, 0, '#ff5040', 3.9);
+  lantern(3.75, 3.55, 4, '#ff9a3c', 3.95);
+  lantern(-25.5, 4.4, -9, '#ff5040', 5.2);
+  lantern(-20.5, 4.4, -9, '#ff9a3c', 5.2);
+  lantern(25.1, 2.1, -16.0, '#ff9a3c');
+  // Traffic cones at lane edges and pad corners.
+  coneAt(20, -6.5); coneAt(26, -6.5); coneAt(-20, -6.5); coneAt(-26, -6.5);
+  coneAt(10, 16.5); coneAt(-10, 16.5); coneAt(30, -4); coneAt(-30, -4);
+  // Potted plants at the spawn corners and the south wall.
+  plantAt(-8, 20.6); plantAt(8, 20.6); plantAt(-30.5, 18.5); plantAt(30.5, 18.5);
+  // Wall vents and spinning exhaust fans.
+  ventPlane(10, 3.8, -21.9, 0);
+  ventPlane(-10, 3.8, -21.9, 0);
+  ventPlane(31.9, 3.5, 10, -Math.PI / 2);
+  ventPlane(-31.9, 3.5, -10, Math.PI / 2);
+  fanAt(-21, 4.0, -21.85, 0);
+  fanAt(6, 4.0, 21.85, Math.PI);
+  // Pipes and sagging cables along the walls.
+  pipeRun(-30, -21.9, 30, -21.9, 4.6, 0.14, mats.pipeRust);
+  pipeRun(-30, 21.9, 30, 21.9, 4.3, 0.14, mats.pipe);
+  for (const px of [-28, -14, 14, 28]) {
+    const vp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 5, 10), px < 0 ? mats.pipeRust : mats.pipe);
+    vp.position.set(px, 2.5, -21.95);
+    register(vp, false);
+  }
+  cable(-28, 4.8, -21.8, 28, 4.8, -21.8, 0.7);
+  cable(-28, 4.4, 21.8, 28, 4.4, 21.8, 0.7);
+  // Banners on poles flanking both site entrances. The B pair stands on
+  // the south edge of the B deck (z=-2.5), NOT at the entrance line z=-6:
+  // the site-B capture camera sits at (-19, 0, -5), one metre from the
+  // z=-6 pole, and its solid blue 1.5x3 m banner filled the sky.
+  bannerPole(19, -6, 'SITE A', '#e8821e');
+  bannerPole(27, -6, 'SITE A', '#e8821e');
+  bannerPole(-19, -2.5, 'SITE B', '#2e7fd6');
+  bannerPole(-27, -2.5, 'SITE B', '#2e7fd6');
+  // Lit windows on the skyline silhouettes: the depot is lived in.
+  {
+    const rand = seeded(777);
+    const winMats = [mats.windowWarm, mats.windowWarm, mats.windowAmber, mats.windowCool];
+    for (const [bx, bz, bw, bh] of [[-46, -30, 10, 16], [-20, -40, 14, 22], [8, -44, 10, 13], [34, -34, 12, 19], [48, 6, 10, 14], [-48, 14, 12, 11], [44, 26, 10, 9]]) {
+      for (let i = 0; i < 3; i += 1) {
+        const mat = winMats[Math.floor(rand() * winMats.length)];
+        const wy = 2 + rand() * Math.max(1, bh - 4);
+        if (bz < 0) windowPane(bx + (rand() - 0.5) * (bw - 2), wy, bz + 3.06, 0, mat);
+        else if (bz > 20) windowPane(bx + (rand() - 0.5) * (bw - 2), wy, bz - 3.06, Math.PI, mat);
+        else if (bx > 0) windowPane(bx - 5.06, wy, bz + (rand() - 0.5) * 4, -Math.PI / 2, mat);
+        else windowPane(bx + 6.06, wy, bz + (rand() - 0.5) * 4, Math.PI / 2, mat);
+      }
+    }
+  }
+  // Warm light pools under the lamps and at both sites, plus light shafts.
+  lightPool(-7.5, -8, 7, 0.28);
+  lightPool(7.5, 8, 7, 0.28);
+  lightPool(23, -11, 8, 0.3);
+  lightPool(-23, -11, 8, 0.3);
+  lightPool(0, 0, 6, 0.16);
+  shaft(23, -11, 2.8, 3.2, 0.05);
+  shaft(-23, -11, 2.8, 3.2, 0.05);
+  shaft(-23, -9, 3.4, 5.2, 0.04);
+  const siteLightA = new THREE.PointLight(new THREE.Color('#ffb45e'), 12, 11);
+  siteLightA.position.set(23, 3, -11);
+  scene.add(siteLightA);
+  const siteLightB = new THREE.PointLight(new THREE.Color('#ffb45e'), 12, 11);
+  siteLightB.position.set(-23, 3, -11);
+  scene.add(siteLightB);
+  const midLight = new THREE.PointLight(new THREE.Color('#ff9a3c'), 8, 9);
+  midLight.position.set(0, 3.4, 0);
+  scene.add(midLight);
+
   // Wooden deck patches: mid lane and the B yard walk on planks.
   function deckPatch(x, z, w, d, rotY = 0) {
     const t = tex.planks.clone();
@@ -709,11 +1010,12 @@ export function createMap(scene) {
     }
   }
 
-  // Lighting: low warm sun, cool sky fill, dusk fog. The sun sits high
+  // Lighting: strong warm sun, cool teal rim from the opposite side so
+  // silhouettes separate from the dusk sky, dusk fog. The sun sits high
   // enough that the spawn yard is not drowned in the south wall's shadow.
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#7a6a8a'), new THREE.Color('#4a3826'), 1.2);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#8a7a9e'), new THREE.Color('#4a3826'), 1.35);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(new THREE.Color('#ffb066'), 2.6);
+  const sun = new THREE.DirectionalLight(new THREE.Color('#ff9a4d'), 3.2);
   sun.position.set(-30, 42, 26);
   sun.target.position.set(0, 0, -4);
   sun.castShadow = true;
@@ -725,10 +1027,10 @@ export function createMap(scene) {
   sun.shadow.camera.far = 120;
   sun.shadow.bias = -0.0005;
   scene.add(sun, sun.target);
-  const fill = new THREE.DirectionalLight(new THREE.Color('#5a6a9a'), 0.5);
-  fill.position.set(20, 14, -20);
+  const fill = new THREE.DirectionalLight(new THREE.Color('#3f8a9a'), 0.9);
+  fill.position.set(24, 10, -24);
   scene.add(fill);
-  scene.fog = new THREE.Fog(new THREE.Color('#4a3236'), 55, 150);
+  scene.fog = new THREE.Fog(new THREE.Color('#503a38'), 55, 150);
 
   // Named zones for the HUD location label and bot radio callouts.
   const zones = [
@@ -766,6 +1068,12 @@ export function createMap(scene) {
     for (const c of clouds) {
       c.position.x += dt * 0.25;
       if (c.position.x > 90) c.position.x = -90;
+    }
+    for (const f of fans) f.rotation.z -= dt * 9;
+    // Neon sign flicker: mostly steady, with a rare hard drop-out.
+    if (neonMat) {
+      const drop = Math.sin(animTime * 3.1) > 0.996 ? 0.35 : 1;
+      neonMat.opacity = (0.85 + 0.15 * Math.sin(animTime * 9)) * drop;
     }
   }
 
