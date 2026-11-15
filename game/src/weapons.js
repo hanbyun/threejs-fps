@@ -18,20 +18,42 @@ export const ARMOR = { name: 'Plating', price: 650, value: 50 };
 
 const GRIP = new THREE.MeshStandardMaterial({ color: new THREE.Color('#2a2622'), roughness: 0.7, metalness: 0.25 });
 const BODY = new THREE.MeshStandardMaterial({ color: new THREE.Color('#3d3a36'), roughness: 0.45, metalness: 0.55 });
+const SLIDE = new THREE.MeshStandardMaterial({ color: new THREE.Color('#4c4741'), roughness: 0.38, metalness: 0.6 });
+const DARK = new THREE.MeshStandardMaterial({ color: new THREE.Color('#1d1b19'), roughness: 0.5, metalness: 0.5 });
 const ACCENT = new THREE.MeshStandardMaterial({ color: new THREE.Color('#f0a830'), roughness: 0.5, metalness: 0.3 });
 
 function buildViewModel(kind) {
   const model = new THREE.Group();
-  const add = (w, h, d, x, y, z, mat) => {
+  const add = (w, h, d, x, y, z, mat, rx = 0) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat || BODY);
     m.position.set(x, y, z);
+    if (rx) m.rotation.x = rx;
     model.add(m);
     return m;
   };
   if (kind === 'pistol') {
-    add(0.07, 0.09, 0.22, 0, 0, -0.1);
-    add(0.06, 0.12, 0.07, 0, -0.09, 0.02, GRIP);
-    add(0.02, 0.03, 0.02, 0, 0.06, -0.2, ACCENT);
+    // P9, rebuilt slim: a long low slide with serrations and sights, a
+    // barrel poking out the front, an angled grip with a base plate, and a
+    // trigger guard — it should read as a pistol at a glance, not a slab.
+    add(0.05, 0.045, 0.26, 0, 0.012, -0.10, SLIDE); // slide
+    add(0.036, 0.008, 0.24, 0, 0.038, -0.10, BODY); // slide top rib
+    add(0.054, 0.038, 0.006, 0, 0.012, 0.005, DARK); // rear serrations
+    add(0.054, 0.038, 0.006, 0, 0.012, 0.016, DARK);
+    add(0.054, 0.038, 0.006, 0, 0.012, 0.027, DARK);
+    add(0.006, 0.018, 0.055, 0.025, 0.02, -0.155, DARK); // ejection port
+    add(0.018, 0.018, 0.05, 0, 0.012, -0.245, DARK); // barrel
+    add(0.024, 0.024, 0.012, 0, 0.012, -0.268, DARK); // muzzle ring
+    add(0.008, 0.02, 0.008, 0, 0.05, -0.205, DARK); // front sight post
+    add(0.007, 0.007, 0.007, 0, 0.062, -0.205, ACCENT); // fiber-optic dot
+    add(0.009, 0.016, 0.009, -0.014, 0.046, 0.018, DARK); // rear sight L
+    add(0.009, 0.016, 0.009, 0.014, 0.046, 0.018, DARK); // rear sight R
+    add(0.044, 0.028, 0.19, 0, -0.026, -0.075, BODY); // frame
+    add(0.008, 0.032, 0.007, 0, -0.052, -0.135, DARK); // trigger guard front
+    add(0.008, 0.007, 0.055, 0, -0.066, -0.108, DARK); // trigger guard bottom
+    add(0.007, 0.022, 0.009, 0, -0.048, -0.102, DARK); // trigger
+    add(0.042, 0.115, 0.056, 0, -0.095, 0.032, GRIP, -0.28); // raked grip
+    add(0.044, 0.09, 0.008, 0, -0.09, 0.062, BODY, -0.28); // backstrap
+    add(0.05, 0.014, 0.062, 0, -0.148, 0.047, DARK, -0.28); // mag base plate
   } else if (kind === 'smg') {
     add(0.08, 0.1, 0.4, 0, 0, -0.12);
     add(0.05, 0.05, 0.3, 0, 0.02, -0.4, GRIP);
@@ -56,7 +78,7 @@ function buildViewModel(kind) {
     add(0.07, 0.07, 0.2, 0, -0.02, 0.26, GRIP);
     add(0.03, 0.05, 0.03, 0, 0.07, -0.36, ACCENT);
   }
-  model.position.set(0.24, -0.2, -0.42);
+  model.position.set(0.26, -0.21, -0.44);
   return model;
 }
 
@@ -96,41 +118,42 @@ export function createWeaponSet(camera) {
     new THREE.PlaneGeometry(0.26, 0.26),
     new THREE.MeshBasicMaterial({ map: starTexture(), color: new THREE.Color('#ffb13d'), transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }),
   );
-  flash.position.set(0.24, -0.17, -0.95);
+  flash.position.set(0.26, -0.19, -0.78);
   flash.visible = false;
   camera.add(flash);
   const flashLight = new THREE.PointLight(new THREE.Color('#ffb13d'), 0, 6);
-  flashLight.position.set(0.24, -0.16, -0.6);
+  flashLight.position.set(0.26, -0.18, -0.6);
   camera.add(flashLight);
 
   const state = { mag: 12, reserve: 48, cooldown: 0, reloadLeft: 0, flash: 0, kick: 0 };
   let bobPhase = 0;
+  let breathePhase = 0;
   let swayX = 0;
   let swayY = 0;
+  let drawT = 0.4; // the weapon rises into frame on load and on equip
 
   // lookX: mouse-look delta this frame (px); speed: ground speed in m/s.
-  // The view model lags the look slightly and bobs with the walk.
+  // The view model lags the look slightly, breathes when idle, bobs with
+  // the walk, kicks on fire, and dips and tilts through a reload.
   function step(dt, lookX = 0, speed = 0) {
     state.cooldown = Math.max(0, state.cooldown - dt);
     state.flash = Math.max(0, state.flash - dt);
-    state.kick += (0 - state.kick) * Math.min(1, dt * 14);
+    state.kick += (0 - state.kick) * Math.min(1, dt * 12);
+    drawT = Math.max(0, drawT - dt);
     bobPhase += dt * speed * 1.9;
+    breathePhase += dt * 1.9;
     const bobAmt = Math.min(1, speed / 5.4);
+    const breathe = 1 - bobAmt; // idle breathing fades out while moving
     const swayTarget = Math.max(-1, Math.min(1, lookX * 0.02));
     swayX += (swayTarget - swayX) * Math.min(1, dt * 10);
     swayY += (0 - swayY) * Math.min(1, dt * 10);
-    model.position.x = 0.24 - swayX * 0.035 + Math.sin(bobPhase) * 0.008 * bobAmt;
-    model.position.y = -0.2 + Math.abs(Math.sin(bobPhase)) * 0.012 * bobAmt + swayY * 0.02;
-    model.position.z = -0.42 + state.kick;
-    model.rotation.x = state.kick * 2.4;
-    model.rotation.z = -swayX * 0.06 + Math.sin(bobPhase) * 0.012 * bobAmt;
-    flash.visible = state.flash > 0;
-    flash.rotation.z = state.flash * 28;
-    flashLight.intensity = state.flash > 0 ? 22 : 0;
+    // Reload dip: the gun drops and tilts (muzzle up) mid-reload, then
+    // comes back; a sine over reload progress so it returns to rest cleanly.
+    let dip = 0;
     if (state.reloadLeft > 0) {
       const d = def();
       state.reloadLeft = Math.max(0, state.reloadLeft - dt);
-      model.rotation.x = -0.55 * Math.min(1, (d.reload - state.reloadLeft) * 2);
+      dip = Math.sin((1 - state.reloadLeft / d.reload) * Math.PI);
       if (state.reloadLeft === 0) {
         const need = d.mag - state.mag;
         const take = Math.min(need, state.reserve);
@@ -138,6 +161,19 @@ export function createWeaponSet(camera) {
         state.reserve -= take;
       }
     }
+    const draw = drawT / 0.4;
+    const idleX = Math.cos(breathePhase * 0.83) * 0.002 * breathe;
+    const idleY = Math.sin(breathePhase) * 0.003 * breathe;
+    const idleRoll = Math.sin(breathePhase * 0.5) * 0.004 * breathe;
+    model.position.x = 0.26 - swayX * 0.035 + Math.sin(bobPhase) * 0.008 * bobAmt + idleX - dip * 0.02;
+    model.position.y = -0.21 + Math.abs(Math.sin(bobPhase)) * 0.012 * bobAmt + swayY * 0.02 + idleY + state.kick * 0.12 - dip * 0.085 - draw * draw * 0.14;
+    model.position.z = -0.44 + state.kick;
+    model.rotation.x = state.kick * 3.0 + dip * 0.5 + draw * 0.35;
+    model.rotation.y = -swayX * 0.10;
+    model.rotation.z = -0.07 - swayX * 0.06 + Math.sin(bobPhase) * 0.012 * bobAmt + idleRoll + dip * 0.18 + draw * 0.1;
+    flash.visible = state.flash > 0;
+    flash.rotation.z = state.flash * 28;
+    flashLight.intensity = state.flash > 0 ? 22 : 0;
   }
 
   return {
@@ -149,13 +185,17 @@ export function createWeaponSet(camera) {
       if (!WEAPONS[id] || id === current) return false;
       current = id;
       // Rebuild the view model in place: swap the group's children.
+      // Copy the list first: add() pulls each child out of the fresh
+      // group, which would shrink the live array mid-iteration and skip
+      // every other part.
       model.clear();
-      buildViewModel(def().kind).children.forEach((c) => model.add(c));
+      [...buildViewModel(def().kind).children].forEach((c) => model.add(c));
       const d = def();
       state.mag = d.mag;
       state.reserve = d.reserve;
       state.cooldown = 0;
       state.reloadLeft = 0;
+      drawT = 0.4; // fresh weapon rises into frame
       return true;
     },
     ready() {
@@ -191,7 +231,7 @@ export function createWeaponSet(camera) {
       state.kick = 0;
     },
     muzzlePos(out) {
-      out.set(0.24, -0.17, -0.95);
+      out.set(0.26, -0.19, -0.78);
       return camera.localToWorld(out);
     },
   };
